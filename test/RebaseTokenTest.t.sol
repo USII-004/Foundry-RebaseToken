@@ -23,6 +23,10 @@ contract RebaseTokenTest is Test{
     vm.stopPrank();
   }
 
+  function addRewardToVault(uint256 rewardAmount) public {
+    (bool success, ) = payable(address(vault)).call{value: rewardAmount}("");
+  }
+
   function testDepositLinear(uint256 amount) public {
     amount = bound(amount, 1e5, type(uint96).max);
     // 1. deposit
@@ -46,5 +50,78 @@ contract RebaseTokenTest is Test{
 
     assertApproxEqAbs(endBalance - middleBalance, middleBalance - startBalance, 1);
     vm.stopPrank();
+  }
+
+  function testRedeemStraightAway(uint256 amount) public {
+    amount = bound(amount, 1e5, type(uint96).max);
+    // 1. deposit
+    vm.startPrank(user);
+    vm.deal(user, amount);
+    vault.deposit{value: amount}();
+    assertEq(rebaseToken.balanceOf(user), amount);
+    // 2. redeem
+    vault.redeem(type(uint256).max);
+    assertEq(rebaseToken.balanceOf(user), 0);
+    assertEq(address(user).balance, amount);
+    vm.stopPrank();
+  }
+
+  function testRedeemAfterTimePassed(uint256 depositAmount, uint256 time) public {
+    time = bound(time, 1000, type(uint96).max);
+    depositAmount = bound(depositAmount, 1e5, type(uint96).max);
+    // 1. deposit
+    vm.deal(user, depositAmount);
+    vm.prank(user);
+    vault.deposit{value: depositAmount}();
+
+    // 2. warp the time
+    vm.warp(block.timestamp + time);
+    uint256 balanceAfterSomeTime = rebaseToken.balanceOf(user);
+    // b. add rewards to the vault
+    vm.deal(owner, balanceAfterSomeTime - depositAmount);
+    vm.prank(owner);
+    addRewardToVault(balanceAfterSomeTime - depositAmount);
+
+    // 3. redeem
+    vm.prank(user);
+    vault.redeem(type(uint256).max);
+
+    uint256 ethBalance = address(user).balance;
+
+    assertEq(ethBalance, balanceAfterSomeTime);
+    assertGt(ethBalance, depositAmount);
+  }
+
+  function testTransfer(uint256 amount, uint256 amountToSend) public {
+    amount = bound(amount, 1e5 + 1e5, type(uint96).max);
+    amountToSend = bound(amountToSend, 1e5, amount - 1e5);
+
+    // 1. deposit
+    vm.deal(user, amount);
+    vm.prank(user);
+    vault.deposit{value: amount}();
+
+    // 2. transfer the tokens
+    address recipient = makeAddr("recipient"); // make a new address for the receiver
+    uint256 userBalance = rebaseToken.balanceOf(user);
+    uint256 recipientBalance = rebaseToken.balanceOf(recipient);
+    assertEq(userBalance, amount);
+    assertEq(recipientBalance, 0);
+
+    // 3. owner reduces the interest rate
+    vm.prank(owner);
+    rebaseToken.setInterestRate(4e10);
+
+    // 4 transfer
+    vm.prank(user);
+    rebaseToken.transfer(recipient, amountToSend);
+    uint256 userBalanceAfterTransfer = rebaseToken.balanceOf(user);
+    uint256 recipientBalanceAfterTransfer = rebaseToken.balanceOf(recipient);
+    assertEq(userBalanceAfterTransfer, userBalance - amountToSend);
+    assertEq(recipientBalanceAfterTransfer, amountToSend);
+
+    // 5. check user interest rate has been inherited (5e10 not 4e10)
+    assertEq(rebaseToken.getUserInterestRate(user), 5e10);
+    assertEq(rebaseToken.getUserInterestRate(recipient), 5e10);
   }
 }
