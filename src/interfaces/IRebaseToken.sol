@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.24;
 
-contract IRebaseToken {
-  function mint(address _to, uint256 _amount) external;
-  function burn(address _from, uint256 _amount) external;
+abstract contract IRebaseToken {
+  function mint(address _to, uint256 _amount) external virtual;
+  function burn(address _from, uint256 _amount) external virtual;
 }
