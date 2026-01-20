@@ -257,4 +257,99 @@ contract CrossChainTest is Test {
       arbSepoliaToken
     );
   }
+
+  function testBridgeTokenBack() public {
+    vm.selectFork(sepoliaFork);
+    // pretend the user is interracting withe the protocol and give the user some tokens
+    vm.deal(user, SEND_VALUE);
+    vm.startPrank(user);
+    Vault(payable(address(vault))).deposit{value: SEND_VALUE}();
+    // bridge the tokens
+    uint256 startBalance = IERC20(address(sepoliaToken)).balanceOf(user);
+    assertEq(startBalance, SEND_VALUE);
+    vm.stopPrank();
+
+    bridgeTokens(
+      SEND_VALUE,
+      sepoliaFork,
+      arbSepoliaFork, 
+      sepoliaNetworkDetails,
+      arbSepoliaNetworkDetails,
+      sepoliaToken,
+      arbSepoliaToken
+    );
+    // bridge back all token to the source chain after 1 hour
+    vm.selectFork(arbSepoliaFork);
+    console.log("user balance before warp:", arbSepoliaToken.balanceOf(user));
+    vm.warp(block.timestamp + 3600);
+    console.log("user balance after warp:", arbSepoliaToken.balanceOf(user));
+    uint256 destBalance = IERC20(address(arbSepoliaToken)).balanceOf(user);
+    bridgeTokens(
+      destBalance,
+      arbSepoliaFork, 
+      sepoliaFork, 
+      arbSepoliaNetworkDetails, 
+      sepoliaNetworkDetails, 
+      arbSepoliaToken, 
+      sepoliaToken
+    );
+  }
+
+  function testBridgeTwice() public {
+    vm.selectFork(sepoliaFork);
+    // pretend the user is interracting withe the protocol and give the user some tokens
+    vm.deal(user, SEND_VALUE);
+    vm.startPrank(user);
+    Vault(payable(address(vault))).deposit{value: SEND_VALUE}();
+    // bridge the tokens
+    uint256 startBalance = IERC20(address(sepoliaToken)).balanceOf(user);
+    assertEq(startBalance, SEND_VALUE);
+    vm.stopPrank();
+
+    // bridge half tokens to the destination chain
+    console.log("bridging tokens (first bridging event):", SEND_VALUE / 2);
+    bridgeTokens(
+      SEND_VALUE / 2,
+      sepoliaFork,
+      arbSepoliaFork, 
+      sepoliaNetworkDetails,
+      arbSepoliaNetworkDetails,
+      sepoliaToken,
+      arbSepoliaToken
+    );
+    // wait 1 hour for interest to accrue
+    vm.selectFork(sepoliaFork);
+    console.log("user balance before warp:", sepoliaToken.balanceOf(user));
+    vm.warp(block.timestamp + 3600);
+    console.log("user balance after warp:", sepoliaToken.balanceOf(user));
+    uint256 newSourceBalance = IERC20(address(sepoliaToken)).balanceOf(user);
+    // bridge the tokens
+    console.log("Bridging tokens (second bridge event):", newSourceBalance);
+    bridgeTokens(
+      newSourceBalance,
+      sepoliaFork, 
+      arbSepoliaFork, 
+      sepoliaNetworkDetails, 
+      arbSepoliaNetworkDetails, 
+      sepoliaToken, 
+      arbSepoliaToken
+    );
+    // bridge all tokens back to the source chain after 1 hour
+    vm.selectFork(arbSepoliaFork);
+    // wait 1 hour for the tokens to accrur interest on the destination chain
+    console.log("user balance before warp:", arbSepoliaToken.balanceOf(user));
+    vm.warp(block.timestamp + 3600);
+    console.log("user balance after warp:", arbSepoliaToken.balanceOf(user));
+    uint256 destBalance = IERC20(address(arbSepoliaToken)).balanceOf(user);
+    console.log("bridging tokens (third bridge event):", destBalance);
+    bridgeTokens(
+      destBalance, 
+      arbSepoliaFork, 
+      sepoliaFork, 
+      arbSepoliaNetworkDetails, 
+      sepoliaNetworkDetails, 
+      arbSepoliaToken,
+      sepoliaToken
+    );
+  }
 }
