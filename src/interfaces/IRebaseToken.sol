@@ -8,4 +8,5 @@ abstract contract IRebaseToken {
   function balanceOf(address _account) external view virtual returns(uint256);
   function getUserInterestRate(address _account) external view virtual returns(uint256);
   function getInterestRate() external view virtual returns(uint256);
+  function grantMintAndBurnRole(address _account) external virtual;
 }
